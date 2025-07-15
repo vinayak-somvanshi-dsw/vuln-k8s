@@ -22,17 +22,18 @@ import (
 
 // VulnImageSpec defines the desired state of VulnImage.
 type VulnImageSpec struct {
-	Image string `json:"image,omitempty"` // Image is the container image to be scanned for vulnerabilities.
+	Image string `json:"image,omitempty"`
 }
 
 // VulnImageStatus defines the observed state of VulnImage.
 type VulnImageStatus struct {
-	ScanStatus    string            `json:"scanStatus,omitempty"` // ScanStatus can be "Pending", "InProgress", "Completed", or "Failed".
-	ScanID        string            `json:"scanID,omitempty"`     // ScanID is a unique identifier for the scan operation, useful for tracking.
-	ScanTime      metav1.Time       `json:"scanTime,omitempty"`   // ScanTime indicates when the scan was initiated.
-	LastScanTime  metav1.Time       `json:"lastScanTime,omitempty"` // LastScanTime indicates when the last scan was performed.
-	ScanError     string            `json:"scanError,omitempty"`  // ScanError contains error details if the scan fails.
-	Summary       map[SeverityLevel]int `json:"summary,omitempty"` // Summary maps severity levels to the count of vulnerabilities, e.g., {"CRITICAL": 2, "HIGH": 1}.
+	ScanStatus    string            `json:"scanStatus,omitempty"`
+	ScanID        string            `json:"scanID,omitempty"`
+	ScanTime      metav1.Time       `json:"scanTime"`
+	LastScanTime  metav1.Time       `json:"lastScanTime,omitempty"`
+	ScanError     string            `json:"scanError,omitempty"`
+	Summary       map[SeverityLevel]int `json:"summary,omitempty"`
+	Vulnerabilities []Vulnerability       `json:"vulnerabilities,omitempty"`
 }
 
 // SeverityLevel defines the severity of a vulnerability.
@@ -48,13 +49,14 @@ const (
 
 // Vulnerability represents a single vulnerability found in an image.
 type Vulnerability struct {
-	ID          string        `json:"id,omitempty"`          // Unique identifier for the vulnerability (e.g., CVE ID)
-	Severity    SeverityLevel `json:"severity,omitempty"`    // Severity level (e.g., CRITICAL, HIGH, MEDIUM, LOW)
-	Description string        `json:"description,omitempty"` // Description of the vulnerability
-	Package     string        `json:"package,omitempty"`     // Affected package name
-	Version     string        `json:"version,omitempty"`     // Affected package version
-	FixedBy     string        `json:"fixedBy,omitempty"`     // Version in which the vulnerability is fixed, if available
+	ID          string        `json:"id,omitempty"`
+	Severity    SeverityLevel `json:"severity,omitempty"`
+	Description string        `json:"description,omitempty"`
+	Package     string        `json:"package,omitempty"`
+	Version     string        `json:"version,omitempty"`
+	FixedBy     string        `json:"fixedBy,omitempty"`
 }
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
@@ -62,7 +64,6 @@ type Vulnerability struct {
 type VulnImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-
 	Spec   VulnImageSpec   `json:"spec,omitempty"`
 	Status VulnImageStatus `json:"status,omitempty"`
 }
