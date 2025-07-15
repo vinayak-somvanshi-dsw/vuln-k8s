@@ -29,10 +29,10 @@ type VulnImageSpec struct {
 type VulnImageStatus struct {
 	ScanStatus    string            `json:"scanStatus,omitempty"`
 	ScanID        string            `json:"scanID,omitempty"`
-	ScanTime      metav1.Time       `json:"scanTime"`
+	ScanTime      metav1.Time       `json:"scanTime,omitempty"`
 	LastScanTime  metav1.Time       `json:"lastScanTime,omitempty"`
 	ScanError     string            `json:"scanError,omitempty"`
-	Summary       map[SeverityLevel]int `json:"summary,omitempty"`
+	Summary       map[string]int `json:"summary,omitempty"`
 	Vulnerabilities []Vulnerability       `json:"vulnerabilities,omitempty"`
 }
 
@@ -64,7 +64,7 @@ type Vulnerability struct {
 type VulnImage struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec   VulnImageSpec   `json:"spec,omitempty"`
+	Spec   VulnImageSpec   `json:"spec"`
 	Status VulnImageStatus `json:"status,omitempty"`
 }
 
