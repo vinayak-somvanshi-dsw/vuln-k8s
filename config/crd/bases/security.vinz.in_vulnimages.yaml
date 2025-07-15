@@ -1,0 +1,91 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: vulnimages.security.vinz.in
+spec:
+  group: security.vinz.in
+  names:
+    kind: VulnImage
+    listKind: VulnImageList
+    plural: vulnimages
+    singular: vulnimage
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: VulnImage is the Schema for the vulnimages API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: VulnImageSpec defines the desired state of VulnImage.
+            properties:
+              image:
+                type: string
+            type: object
+          status:
+            description: VulnImageStatus defines the observed state of VulnImage.
+            properties:
+              lastScanTime:
+                format: date-time
+                type: string
+              scanError:
+                type: string
+              scanID:
+                type: string
+              scanStatus:
+                type: string
+              scanTime:
+                format: date-time
+                type: string
+              summary:
+                additionalProperties:
+                  type: integer
+                type: object
+              vulnerabilities:
+                items:
+                  description: Vulnerability represents a single vulnerability found
+                    in an image.
+                  properties:
+                    description:
+                      type: string
+                    fixedBy:
+                      type: string
+                    id:
+                      type: string
+                    package:
+                      type: string
+                    severity:
+                      description: SeverityLevel defines the severity of a vulnerability.
+                      type: string
+                    version:
+                      type: string
+                  type: object
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
