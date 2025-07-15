@@ -35,31 +35,31 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/go-logr/logr"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	v1alpha1 "github.com/vinayak-somvanshi-dsw/vuln-k8s/api/v1alpha1"
-	"github.com/google/uuid"
 )
 
 const (
 	// Finalizer name for cleanup
 	VulnImageFinalizer = "security.vinz.in/vuln-image-finalizer"
-	
+
 	// Annotations
-	LastScanAnnotation = "security.vinz.in/last-scan"
+	LastScanAnnotation     = "security.vinz.in/last-scan"
 	ScanIntervalAnnotation = "security.vinz.in/scan-interval"
-	
+
 	// Default values
 	DefaultScanInterval = 24 * time.Hour
-	DefaultScanTimeout = 5 * time.Minute
-	MaxRetries = 5
-	
+	DefaultScanTimeout  = 5 * time.Minute
+	MaxRetries          = 5
+
 	// Conditions
 	ConditionScanned = "Scanned"
-	ConditionReady = "Ready"
+	ConditionReady   = "Ready"
 )
 
 // Metrics
@@ -71,7 +71,7 @@ var (
 		},
 		[]string{"image", "status"},
 	)
-	
+
 	vulnerabilityCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "vuln_image_vulnerabilities_total",
@@ -79,7 +79,7 @@ var (
 		},
 		[]string{"image", "severity"},
 	)
-	
+
 	scanCount = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "vuln_image_scans_total",
@@ -96,11 +96,11 @@ func init() {
 // VulnImageReconciler reconciles a VulnImage object
 type VulnImageReconciler struct {
 	client.Client
-	Scheme           *runtime.Scheme
-	NowFunc          func() time.Time // for testability
-	BaseRequeueAfter time.Duration    // configurable base requeue interval
-	ScanTimeout      time.Duration    // configurable scan timeout
-	MaxConcurrentScans int            // limit concurrent scans
+	Scheme             *runtime.Scheme
+	NowFunc            func() time.Time // for testability
+	BaseRequeueAfter   time.Duration    // configurable base requeue interval
+	ScanTimeout        time.Duration    // configurable scan timeout
+	MaxConcurrentScans int              // limit concurrent scans
 }
 
 // now returns the current time, can be overridden for tests
@@ -133,12 +133,12 @@ func (r *VulnImageReconciler) shouldScan(vuln *v1alpha1.VulnImage) bool {
 		vuln.Status.ScanStatus == "Pending" {
 		return true
 	}
-	
+
 	// Check if enough time has passed since last scan
 	if vuln.Status.LastScanTime.IsZero() {
 		return true
 	}
-	
+
 	// Get scan interval from annotation or use default
 	scanInterval := DefaultScanInterval
 	if intervalStr, ok := vuln.Annotations[ScanIntervalAnnotation]; ok {
@@ -146,7 +146,7 @@ func (r *VulnImageReconciler) shouldScan(vuln *v1alpha1.VulnImage) bool {
 			scanInterval = interval
 		}
 	}
-	
+
 	// Check if scan interval has elapsed
 	return r.now().Sub(vuln.Status.LastScanTime.Time) >= scanInterval
 }
@@ -161,21 +161,17 @@ func getImageDigest(image string) string {
 func runTrivyScan(image string, timeout time.Duration) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	
+
 	// Enhanced Trivy command with more options
-	cmd := exec.CommandContext(ctx, "trivy", "image", 
-		"--quiet", 
+	cmd := exec.CommandContext(ctx, "trivy", "image",
+		"--quiet",
 		"--format", "json",
-		"--skip-db-update",  // Skip DB update for faster scans
-		"--skip-java-db-update",
-		"--no-progress",
-		"--timeout", "4m",   // Internal trivy timeout
 		image)
-	
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	
+
 	err := cmd.Run()
 	if err != nil {
 		return nil, fmt.Errorf("trivy error: %v, stderr: %s", err, stderr.String())
@@ -205,14 +201,14 @@ func parseTrivyOutput(data []byte) ([]v1alpha1.Vulnerability, map[string]int, er
 			Vulnerabilities []TrivyVulnerability `json:"Vulnerabilities"`
 		} `json:"Results"`
 	}
-	
+
 	if err := json.Unmarshal(data, &trivyOutput); err != nil {
 		return nil, nil, err
 	}
-	
+
 	var vulns []v1alpha1.Vulnerability
 	summary := make(map[string]int)
-	
+
 	for _, result := range trivyOutput.Results {
 		for _, tv := range result.Vulnerabilities {
 			// Convert Trivy vulnerability to our format
@@ -228,7 +224,7 @@ func parseTrivyOutput(data []byte) ([]v1alpha1.Vulnerability, map[string]int, er
 			summary[strings.ToUpper(tv.Severity)]++
 		}
 	}
-	
+
 	return vulns, summary, nil
 }
 
@@ -246,7 +242,7 @@ func (r *VulnImageReconciler) setCondition(vuln *v1alpha1.VulnImage, conditionTy
 		Reason:             reason,
 		Message:            message,
 	}
-	
+
 	// Note: This is a placeholder - the actual implementation would depend on
 	// whether the VulnImageStatus has a Conditions field
 	_ = condition
@@ -256,7 +252,7 @@ func (r *VulnImageReconciler) setCondition(vuln *v1alpha1.VulnImage, conditionTy
 func (r *VulnImageReconciler) recordMetrics(image string, status string, duration time.Duration, summary map[string]int) {
 	scanDuration.WithLabelValues(image, status).Observe(duration.Seconds())
 	scanCount.WithLabelValues(image, status).Inc()
-	
+
 	// Record vulnerability counts by severity
 	for severity, count := range summary {
 		vulnerabilityCount.WithLabelValues(image, severity).Set(float64(count))
@@ -275,13 +271,13 @@ func (r *VulnImageReconciler) handleFinalizer(ctx context.Context, vuln *v1alpha
 		// Handle deletion
 		if controllerutil.ContainsFinalizer(vuln, VulnImageFinalizer) {
 			logger.Info("Cleaning up VulnImage resources", "image", vuln.Spec.Image)
-			
+
 			// Clean up metrics
 			labels := prometheus.Labels{"image": vuln.Spec.Image}
 			scanDuration.DeletePartialMatch(labels)
 			vulnerabilityCount.DeletePartialMatch(labels)
 			scanCount.DeletePartialMatch(labels)
-			
+
 			// Remove finalizer
 			controllerutil.RemoveFinalizer(vuln, VulnImageFinalizer)
 			return ctrl.Result{}, r.Update(ctx, vuln)
@@ -320,7 +316,7 @@ func (r *VulnImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		logger.Info("Skipping scan: interval not reached", "image", vuln.Spec.Image)
 		r.setCondition(&vuln, ConditionReady, metav1.ConditionTrue, "SkipScan", "Scan interval not reached")
 		_ = r.updateStatus(ctx, &vuln, logger, "Failed to update status")
-		
+
 		// Requeue for next scan interval
 		nextScan := DefaultScanInterval
 		if intervalStr, ok := vuln.Annotations[ScanIntervalAnnotation]; ok {
@@ -332,16 +328,16 @@ func (r *VulnImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	logger.Info("Starting image scan", "image", vuln.Spec.Image)
-	
+
 	// Update status to InProgress
 	vuln.Status.ScanStatus = "InProgress"
 	vuln.Status.ScanID = generateScanID()
 	vuln.Status.ScanTime = metav1.NewTime(r.now())
 	vuln.Status.ScanError = ""
-	
+
 	r.setCondition(&vuln, ConditionScanned, metav1.ConditionFalse, "ScanInProgress", "Vulnerability scan in progress")
 	r.setCondition(&vuln, ConditionReady, metav1.ConditionFalse, "ScanInProgress", "Vulnerability scan in progress")
-	
+
 	if err := r.updateStatus(ctx, &vuln, logger, "Failed to update status to InProgress"); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -384,12 +380,12 @@ func (r *VulnImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		logger.Error(err, "Trivy scan failed")
 		vuln.Status.ScanStatus = "Failed"
 		vuln.Status.ScanError = err.Error()
-		
+
 		scanDuration := r.now().Sub(startTime)
 		r.setCondition(&vuln, ConditionScanned, metav1.ConditionFalse, "ScanFailed", err.Error())
 		r.setCondition(&vuln, ConditionReady, metav1.ConditionFalse, "ScanFailed", err.Error())
 		r.recordMetrics(vuln.Spec.Image, "failed", scanDuration, nil)
-		
+
 		_ = r.updateStatus(ctx, &vuln, logger, "Failed to update status after Trivy scan failure")
 		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
@@ -400,12 +396,12 @@ func (r *VulnImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		logger.Error(err, "Trivy JSON parse error")
 		vuln.Status.ScanStatus = "Failed"
 		vuln.Status.ScanError = err.Error()
-		
+
 		scanDuration := r.now().Sub(startTime)
 		r.setCondition(&vuln, ConditionScanned, metav1.ConditionFalse, "ScanFailed", err.Error())
 		r.setCondition(&vuln, ConditionReady, metav1.ConditionFalse, "ScanFailed", err.Error())
 		r.recordMetrics(vuln.Spec.Image, "failed", scanDuration, nil)
-		
+
 		_ = r.updateStatus(ctx, &vuln, logger, "Failed to update status after Trivy JSON parse failure")
 		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
@@ -422,10 +418,10 @@ func (r *VulnImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	highCount := summary["HIGH"]
 
 	if criticalCount > 0 || highCount > 0 {
-		r.setCondition(&vuln, ConditionReady, metav1.ConditionFalse, "VulnerabilitiesFound", 
+		r.setCondition(&vuln, ConditionReady, metav1.ConditionFalse, "VulnerabilitiesFound",
 			fmt.Sprintf("Found %d critical and %d high severity vulnerabilities", criticalCount, highCount))
 	} else {
-		r.setCondition(&vuln, ConditionReady, metav1.ConditionTrue, "NoHighRiskVulnerabilities", 
+		r.setCondition(&vuln, ConditionReady, metav1.ConditionTrue, "NoHighRiskVulnerabilities",
 			"No critical or high severity vulnerabilities found")
 	}
 
@@ -438,9 +434,9 @@ func (r *VulnImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Image scan completed", 
-		"image", vuln.Spec.Image, 
-		"vulnCount", len(vulns), 
+	logger.Info("Image scan completed",
+		"image", vuln.Spec.Image,
+		"vulnCount", len(vulns),
 		"summary", summary,
 		"duration", scanDuration)
 
@@ -451,7 +447,7 @@ func (r *VulnImageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			nextScan = interval
 		}
 	}
-	
+
 	return ctrl.Result{RequeueAfter: nextScan}, nil
 }
 
@@ -496,7 +492,7 @@ func (r *VulnImageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // equalAnnotations compares two annotation maps for scan-related changes
 func equalAnnotations(old, new map[string]string) bool {
 	scanRelatedKeys := []string{ScanIntervalAnnotation, LastScanAnnotation}
-	
+
 	for _, key := range scanRelatedKeys {
 		if old[key] != new[key] {
 			return false
